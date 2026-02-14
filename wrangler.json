@@ -1,0 +1,16 @@
+{
+	"compatibility_date": "2025-10-08",
+	"main": "src/index.ts",
+	"name": "ckoolsassii-worker",
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_id": "f3b174f8-e75a-410b-986d-f6b88061d717",
+			"database_name": "ckoolsassii-db"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}
