@@ -94,26 +94,47 @@ function upsBase(env: UpsEnv): string {
 let tokenCache: { token: string; expires: number; key: string } | null = null;
 
 export async function getUpsToken(env: UpsEnv): Promise<string> {
-	const key = `${upsBase(env)}|${env.UPS_CLIENT_ID}`;
+	const id = (env.UPS_CLIENT_ID || "").trim();
+	const secret = (env.UPS_CLIENT_SECRET || "").trim();
+	const key = `${upsBase(env)}|${id}`;
 	if (tokenCache && tokenCache.key === key && Date.now() < tokenCache.expires) return tokenCache.token;
 
-	const res = await fetch(`${upsBase(env)}/security/v1/oauth/token`, {
-		method: "POST",
-		headers: {
-			Authorization: "Basic " + btoa(`${env.UPS_CLIENT_ID}:${env.UPS_CLIENT_SECRET}`),
-			"Content-Type": "application/x-www-form-urlencoded",
-			...(env.UPS_ACCOUNT_NUMBER ? { "x-merchant-id": env.UPS_ACCOUNT_NUMBER } : {}),
+	const url = `${upsBase(env)}/security/v1/oauth/token`;
+	// UPS documents Basic auth; some UPS apps only accept the credentials in the form body.
+	const attempts: { headers: Record<string, string>; body: string }[] = [
+		{
+			headers: { Authorization: "Basic " + btoa(`${id}:${secret}`) },
+			body: new URLSearchParams({ grant_type: "client_credentials" }).toString(),
 		},
-		body: "grant_type=client_credentials",
-	});
-	const body = (await res.json().catch(() => ({}))) as Record<string, any>;
-	if (!res.ok || !body.access_token) {
-		const detail = body.response?.errors?.[0]?.message || body.error_description || res.statusText;
-		throw new Error(`UPS sign-in failed (${res.status}): ${detail}`);
+		{
+			headers: {},
+			body: new URLSearchParams({ grant_type: "client_credentials", client_id: id, client_secret: secret }).toString(),
+		},
+	];
+
+	let lastError = "";
+	for (const attempt of attempts) {
+		const res = await fetch(url, {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...attempt.headers },
+			body: attempt.body,
+		});
+		const text = await res.text();
+		let body: Record<string, any> = {};
+		try {
+			body = JSON.parse(text);
+		} catch {
+			/* non-JSON error page */
+		}
+		if (res.ok && body.access_token) {
+			const ttl = Number(body.expires_in || 3600) * 1000;
+			tokenCache = { token: body.access_token, expires: Date.now() + ttl - 60_000, key };
+			return body.access_token;
+		}
+		const err = body.response?.errors?.[0];
+		lastError = `(${res.status}) ${err ? `${err.code}: ${err.message}` : body.error_description || body.error || text.slice(0, 200) || res.statusText}`;
 	}
-	const ttl = Number(body.expires_in || 3600) * 1000;
-	tokenCache = { token: body.access_token, expires: Date.now() + ttl - 60_000, key };
-	return body.access_token;
+	throw new Error(`UPS sign-in failed ${lastError}. Client ID is ${id.length} characters, secret is ${secret.length} characters.`);
 }
 
 function address(lines: (string | undefined)[], city?: string, state?: string, zip?: string, country = "US") {
