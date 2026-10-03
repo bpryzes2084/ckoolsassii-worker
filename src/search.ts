@@ -100,6 +100,19 @@ export async function checkSquare(env: SquareEnv): Promise<{ id: string; name: s
 	return (data.locations || []).map((l: Json) => ({ id: l.id, name: l.name, status: l.status }));
 }
 
+/** Item name for each variation id (used to estimate shipping weight). Unknown ids are left out. */
+export async function itemNamesForVariations(env: SquareEnv, variationIds: string[]): Promise<Map<string, string>> {
+	const catalog = await loadCatalog(env);
+	const wanted = new Set(variationIds);
+	const out = new Map<string, string>();
+	for (const it of catalog.items) {
+		for (const v of it.item_data?.variations || []) {
+			if (wanted.has(v.id)) out.set(v.id, `${it.item_data?.name || ""} ${v.item_variation_data?.name || ""}`);
+		}
+	}
+	return out;
+}
+
 // ---- text matching (exported for testing) ----
 
 export function normalize(s: string): string {

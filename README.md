@@ -9,7 +9,8 @@ stock status.
 | Path | What it does |
 | --- | --- |
 | `GET /api/search?q=hoodie` | Products whose name, description, category or size matches every word in `q`. Handles plurals and common alternatives (tee / t-shirt, hat → caps and beanies, crewneck / sweatshirt). Empty `q` returns everything. |
-| `GET /api/health` | `{ ok, square_configured }`. Use it to check the token is set. |
+| `POST /api/shipping-rates` | Live UPS rates for the cart. Body: `{ "address": { "postal_code": "90001", "line1": "…", "city": "…", "state": "CA" }, "items": [{ "variation_id": "…", "qty": 2 }] }`. Returns `{ weight_lb, rates: [{ service, amount, business_days, … }] }`, cheapest first. |
+| `GET /api/health` | Shows which settings are present. Add `?square=1` to test the Square token, or `?ups=1` to test the UPS credentials. |
 
 Both paths also work without the `/api` prefix, for example on the workers.dev address.
 
@@ -50,6 +51,24 @@ Response shape (what `index.html` reads):
 3. **Optional: `SQUARE_LOCATION_ID`.** Set it as a plain variable to limit results and stock counts to one Square location. Without it, stock is summed across all locations.
 4. **Deploy:** `npm install` then `npm run deploy`.
 5. **Connect the site.** `wrangler.json` already routes `ckoolsassii.biz/api/*` and `www.ckoolsassii.biz/api/*` to this worker, so a deploy sets that up. The DNS records for ckoolsassii.biz must be **Proxied** (orange cloud) or the route won't run. Don't attach the worker as a *Custom Domain*, because that would replace the whole website with the API.
+
+## UPS shipping setup
+
+Add these in Workers & Pages → ckoolsassii-worker → Settings → Variables and Secrets:
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `UPS_CLIENT_ID` | Secret | From developer.ups.com → your app → Credentials |
+| `UPS_CLIENT_SECRET` | Secret | Same page |
+| `UPS_ACCOUNT_NUMBER` | Secret | Your 6-character UPS shipper number. Optional, but needed for your negotiated rates. |
+| `SHIP_FROM_NAME` | Text | e.g. `cKool n saSSii` |
+| `SHIP_FROM_ADDRESS` | Text | Street address you ship from |
+| `SHIP_FROM_CITY` | Text | |
+| `SHIP_FROM_STATE` | Text | 2-letter code, e.g. `CO` |
+| `SHIP_FROM_ZIP` | Text | |
+| `UPS_ENV` | Text | Optional. `test` uses UPS's testing system; it defaults to production. |
+
+Package weight is estimated from product names (`WEIGHT_RULES` in `src/shipping.ts`: hoodie 1.4 lb, sweatshirt 1.2, long sleeve 0.6, tee 0.45, cap 0.35, beanie 0.25, other 0.75, plus 0.3 lb packaging). Edit those numbers to match your real packed weights.
 
 `SQUARE_ENV` defaults to `production`. Set it to `sandbox` to test with a sandbox token.
 
