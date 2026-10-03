@@ -49,9 +49,7 @@ Response shape (what `index.html` reads):
    Or use the dashboard: Workers & Pages → ckoolsassii-worker → Settings → Variables and Secrets → Add → type **Secret**.
 3. **Optional: `SQUARE_LOCATION_ID`.** Set it as a plain variable to limit results and stock counts to one Square location. Without it, stock is summed across all locations.
 4. **Deploy:** `npm install` then `npm run deploy`.
-5. **Connect the site.** Choose one of these:
-   - **ckoolsassii.biz is on Cloudflare** (orange-cloud DNS): Worker → Settings → Domains & Routes → Add route `ckoolsassii.biz/api/*`. Add `www.ckoolsassii.biz/api/*` too if you use www. Nothing in `index.html` needs to change.
-   - **It isn't:** in `index.html`, add `<script>window.CK_API_BASE = "https://ckoolsassii-worker.<your-subdomain>.workers.dev";</script>` above the main script.
+5. **Connect the site.** `wrangler.json` already routes `ckoolsassii.biz/api/*` and `www.ckoolsassii.biz/api/*` to this worker, so a deploy sets that up. The DNS records for ckoolsassii.biz must be **Proxied** (orange cloud) or the route won't run. Don't attach the worker as a *Custom Domain*, because that would replace the whole website with the API.
 
 `SQUARE_ENV` defaults to `production`. Set it to `sandbox` to test with a sandbox token.
 

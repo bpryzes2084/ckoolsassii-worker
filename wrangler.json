@@ -16,5 +16,16 @@
 	"keep_vars": true,
 	"vars": {
 		"SQUARE_ENV": "production"
-	}
+	},
+	"workers_dev": true,
+	"routes": [
+		{
+			"pattern": "ckoolsassii.biz/api/*",
+			"zone_name": "ckoolsassii.biz"
+		},
+		{
+			"pattern": "www.ckoolsassii.biz/api/*",
+			"zone_name": "ckoolsassii.biz"
+		}
+	]
 }
