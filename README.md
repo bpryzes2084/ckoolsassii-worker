@@ -71,6 +71,7 @@ Add these in Workers & Pages → ckoolsassii-worker → Settings → Variables a
 | `SHIP_FROM_CITY` | Text | |
 | `SHIP_FROM_STATE` | Text | 2-letter code, e.g. `CO` |
 | `SHIP_FROM_ZIP` | Text | |
+| `UPS_SERVICES` | Text | Optional. UPS services shoppers can choose, as comma-separated codes. Defaults to `03` (UPS Ground only). Example: `03,02` adds 2nd Day Air. |
 | `UPS_ENV` | Text | Optional. `test` uses UPS's testing system; it defaults to production. |
 
 ## Shipping label page (ckoolsassii.biz/admin.html)

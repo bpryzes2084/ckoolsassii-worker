@@ -15,6 +15,7 @@ export interface UpsEnv {
 	SHIP_FROM_STATE?: string; // 2-letter code, e.g. "CO"
 	SHIP_FROM_ZIP?: string;
 	SHIP_FROM_PHONE?: string; // required by UPS to buy labels
+	UPS_SERVICES?: string; // services offered to shoppers, comma-separated UPS codes; default "03" (Ground only)
 }
 
 export interface ShipTo {
@@ -190,6 +191,7 @@ export async function getRates(env: UpsEnv, to: ShipTo, weightLb: number): Promi
 		throw new Error(`UPS rates failed (${res.status}): ${detail}`);
 	}
 
+	const offered = (env.UPS_SERVICES || "03").split(",").map((c) => c.trim()).filter(Boolean);
 	const rated = body.RateResponse?.RatedShipment;
 	const list: any[] = Array.isArray(rated) ? rated : rated ? [rated] : [];
 	return list
@@ -207,7 +209,7 @@ export async function getRates(env: UpsEnv, to: ShipTo, weightLb: number): Promi
 				business_days: Number.isFinite(days) && days > 0 ? days : null,
 			};
 		})
-		.filter((r) => r.amount > 0)
+		.filter((r) => r.amount > 0 && offered.includes(r.service_code))
 		.sort((a, b) => a.amount - b.amount);
 }
 
