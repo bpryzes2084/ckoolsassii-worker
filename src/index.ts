@@ -1,15 +1,16 @@
 import { checkSquare, itemNamesForVariations, searchCatalog, type SquareEnv } from "./search";
+import { AdminError, checkAdmin, createLabel, finishShipment, getLabel, listOrders, type AdminEnv } from "./admin";
 import { CheckoutError, createCheckout, type CheckoutInput } from "./checkout";
 import { estimateWeightLb, getRates, getUpsToken, missingShipFrom, upsConfigured, type ShipTo, type UpsEnv } from "./shipping";
 
-interface AppEnv extends SquareEnv, UpsEnv {
+interface AppEnv extends SquareEnv, UpsEnv, AdminEnv {
 	DB: D1Database;
 }
 
 const CORS_HEADERS: Record<string, string> = {
 	"Access-Control-Allow-Origin": "*",
 	"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-	"Access-Control-Allow-Headers": "Content-Type",
+	"Access-Control-Allow-Headers": "Content-Type, Authorization",
 	"Access-Control-Max-Age": "86400",
 };
 
@@ -45,6 +46,8 @@ export default {
 					body.square_error = (err as Error).message;
 				}
 			}
+			body.labels_configured = Boolean(env.ADMIN_PASSWORD && env.UPS_ACCOUNT_NUMBER && env.SHIP_FROM_PHONE);
+			body.shipped_email_configured = Boolean(env.BREVO_API_KEY && env.EMAIL_FROM);
 			body.ups_configured = upsConfigured(env);
 			body.ship_from_missing = missingShipFrom(env);
 			// /api/health?ups=1 also tests the UPS credentials.
@@ -88,6 +91,24 @@ export default {
 			} catch (err) {
 				console.error("shipping rates failed:", err);
 				return json({ error: "Couldn't get UPS rates for that address. Check the ZIP code and try again.", detail: (err as Error).message }, 502);
+			}
+		}
+
+		if (path.startsWith("/admin/")) {
+			try {
+				await checkAdmin(request, env);
+				if (path === "/admin/orders" && request.method === "GET") return json(await listOrders(env), 200, { "Cache-Control": "no-store" });
+				if (path === "/admin/label" && request.method === "GET") {
+					return json(await getLabel(env, url.searchParams.get("order_id") || ""), 200, { "Cache-Control": "no-store" });
+				}
+				const input = request.method === "POST" ? ((await request.json().catch(() => ({}))) as Record<string, any>) : {};
+				if (path === "/admin/label" && request.method === "POST") return json(await createLabel(env, input));
+				if (path === "/admin/finish" && request.method === "POST") return json(await finishShipment(env, String(input.order_id || "")));
+				return json({ error: "Not found" }, 404);
+			} catch (err) {
+				if (err instanceof AdminError) return json({ error: err.message }, err.status);
+				console.error("admin request failed:", err);
+				return json({ error: (err as Error).message || "Something went wrong." }, 502);
 			}
 		}
 

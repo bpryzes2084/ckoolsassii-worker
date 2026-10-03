@@ -14,6 +14,7 @@ export interface UpsEnv {
 	SHIP_FROM_CITY?: string;
 	SHIP_FROM_STATE?: string; // 2-letter code, e.g. "CO"
 	SHIP_FROM_ZIP?: string;
+	SHIP_FROM_PHONE?: string; // required by UPS to buy labels
 }
 
 export interface ShipTo {
@@ -38,7 +39,7 @@ export interface Rate {
 
 const RATING_VERSION = "v2409";
 
-const SERVICE_NAMES: Record<string, string> = {
+export const SERVICE_NAMES: Record<string, string> = {
 	"03": "UPS Ground",
 	"12": "UPS 3 Day Select",
 	"02": "UPS 2nd Day Air",
@@ -87,7 +88,7 @@ export function missingShipFrom(env: UpsEnv): string[] {
 	return need.filter(([k]) => !env[k]).map(([, label]) => label);
 }
 
-function upsBase(env: UpsEnv): string {
+export function upsBase(env: UpsEnv): string {
 	return (env.UPS_ENV || "production").toLowerCase() === "test" ? "https://wwwcie.ups.com" : "https://onlinetools.ups.com";
 }
 
@@ -137,7 +138,7 @@ export async function getUpsToken(env: UpsEnv): Promise<string> {
 	throw new Error(`UPS sign-in failed ${lastError}. Client ID is ${id.length} characters, secret is ${secret.length} characters.`);
 }
 
-function address(lines: (string | undefined)[], city?: string, state?: string, zip?: string, country = "US") {
+export function address(lines: (string | undefined)[], city?: string, state?: string, zip?: string, country = "US") {
 	return {
 		AddressLine: lines.filter((l): l is string => Boolean(l && l.trim())).slice(0, 3),
 		City: city || "",
@@ -208,4 +209,125 @@ export async function getRates(env: UpsEnv, to: ShipTo, weightLb: number): Promi
 		})
 		.filter((r) => r.amount > 0)
 		.sort((a, b) => a.amount - b.amount);
+}
+
+// ---- labels ----
+
+export interface LabelRequest {
+	service_code: string;
+	weight_lb: number;
+	reference?: string; // shows on the label, e.g. the order number
+	to: {
+		name: string;
+		phone?: string;
+		line1: string;
+		line2?: string;
+		city: string;
+		state: string;
+		postal_code: string;
+		country?: string;
+		residential?: boolean;
+	};
+}
+
+export interface LabelResult {
+	tracking_number: string;
+	label_format: string;
+	label_base64: string;
+	charge: number | null;
+}
+
+function digits(s?: string): string {
+	return (s || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+}
+
+export async function buyLabel(env: UpsEnv, req: LabelRequest): Promise<LabelResult> {
+	if (!env.UPS_ACCOUNT_NUMBER) throw new Error("UPS_ACCOUNT_NUMBER is required to buy labels.");
+	const shipperPhone = digits(env.SHIP_FROM_PHONE);
+	if (shipperPhone.length < 10) throw new Error("SHIP_FROM_PHONE (10-digit phone number) is required to buy labels.");
+
+	const token = await getUpsToken(env);
+	const name = (env.SHIP_FROM_NAME || "cKool n saSSii").slice(0, 35);
+	const from = address([env.SHIP_FROM_ADDRESS], env.SHIP_FROM_CITY, env.SHIP_FROM_STATE, env.SHIP_FROM_ZIP);
+	const toAddr: Record<string, any> = address(
+		[req.to.line1, req.to.line2],
+		req.to.city,
+		req.to.state,
+		req.to.postal_code,
+		req.to.country || "US",
+	);
+	if (req.to.residential !== false) toAddr.ResidentialAddressIndicator = "";
+	const toPhone = digits(req.to.phone);
+
+	const pkg: Record<string, any> = {
+		Packaging: { Code: "02", Description: "Package" },
+		PackageWeight: { UnitOfMeasurement: { Code: "LBS" }, Weight: String(Math.max(0.1, req.weight_lb)) },
+	};
+	if (req.reference) pkg.ReferenceNumber = { Value: req.reference.slice(0, 35) };
+
+	const shipment = {
+		ShipmentRequest: {
+			Request: { RequestOption: "nonvalidate", TransactionReference: { CustomerContext: (req.reference || "").slice(0, 512) } },
+			Shipment: {
+				Description: "Apparel",
+				Shipper: {
+					Name: name,
+					AttentionName: name,
+					Phone: { Number: shipperPhone },
+					ShipperNumber: env.UPS_ACCOUNT_NUMBER.trim(),
+					Address: from,
+				},
+				ShipFrom: { Name: name, AttentionName: name, Phone: { Number: shipperPhone }, Address: from },
+				ShipTo: {
+					Name: req.to.name.slice(0, 35) || "Customer",
+					AttentionName: req.to.name.slice(0, 35) || "Customer",
+					...(toPhone.length >= 10 ? { Phone: { Number: toPhone } } : {}),
+					Address: toAddr,
+				},
+				PaymentInformation: {
+					ShipmentCharge: { Type: "01", BillShipper: { AccountNumber: env.UPS_ACCOUNT_NUMBER.trim() } },
+				},
+				Service: { Code: req.service_code, Description: SERVICE_NAMES[req.service_code] || "" },
+				ShipmentRatingOptions: { NegotiatedRatesIndicator: "" },
+				Package: pkg,
+			},
+			LabelSpecification: {
+				LabelImageFormat: { Code: "GIF" },
+				LabelStockSize: { Height: "6", Width: "4" },
+			},
+		},
+	};
+
+	const res = await fetch(`${upsBase(env)}/api/shipments/v2409/ship`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Content-Type": "application/json",
+			transId: crypto.randomUUID().replace(/-/g, "").slice(0, 32),
+			transactionSrc: "ckoolsassii",
+		},
+		body: JSON.stringify(shipment),
+	});
+	const body = (await res.json().catch(() => ({}))) as Record<string, any>;
+	if (!res.ok) {
+		const detail = body.response?.errors?.map((e: any) => `${e.code}: ${e.message}`).join("; ") || res.statusText;
+		throw new Error(`UPS label failed (${res.status}): ${detail}`);
+	}
+	const results = body.ShipmentResponse?.ShipmentResults || {};
+	const pkgResults = Array.isArray(results.PackageResults) ? results.PackageResults[0] : results.PackageResults || {};
+	const tracking = pkgResults.TrackingNumber || results.ShipmentIdentificationNumber;
+	const image = pkgResults.ShippingLabel?.GraphicImage || pkgResults.LabelImage?.GraphicImage;
+	if (!tracking || !image) throw new Error("UPS created the shipment but returned no tracking number or label image.");
+	const neg = results.NegotiatedRateCharges?.TotalCharge?.MonetaryValue;
+	const total = results.ShipmentCharges?.TotalCharges?.MonetaryValue;
+	return {
+		tracking_number: String(tracking),
+		label_format: "GIF",
+		label_base64: String(image),
+		charge: neg ? Number(neg) : total ? Number(total) : null,
+	};
+}
+
+export function trackingUrl(tracking: string): string {
+	return `https://www.ups.com/track?loc=en_US&tracknum=${encodeURIComponent(tracking)}`;
 }

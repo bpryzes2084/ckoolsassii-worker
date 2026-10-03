@@ -11,6 +11,10 @@ stock status.
 | `GET /api/search?q=hoodie` | Products whose name, description, category or size matches every word in `q`. Handles plurals and common alternatives (tee / t-shirt, hat → caps and beanies, crewneck / sweatshirt). Empty `q` returns everything. |
 | `POST /api/shipping-rates` | Live UPS rates for the cart. Body: `{ "address": { "postal_code": "90001", "line1": "…", "city": "…", "state": "CA" }, "items": [{ "variation_id": "…", "qty": 2 }] }`. Returns `{ weight_lb, rates: [{ service, amount, business_days, … }] }`, cheapest first. |
 | `POST /api/create-checkout` | Creates a Square payment link. Body: `{ "items": [{ "variation_id": "…", "qty": 1 }], "shipping": { "service_code": "03", "postal_code": "90001" }, "return_url": "https://ckoolsassii.biz/" }`. Prices come from the Square catalog and the UPS charge is re-quoted on the server, so the browser can't change either. Returns `{ checkoutUrl, order_id, shipping }`. Square collects the shipping address and sends the buyer back to `return_url?order=complete`. Requires `SQUARE_LOCATION_ID`. |
+| `GET /api/admin/orders` | **Password required.** Paid shipment orders from the last 60 days, split into `to_ship` and `shipped`. |
+| `POST /api/admin/label` | **Password required.** `{ order_id, service_code?, weight_lb? }`. Buys a UPS label, saves it, writes tracking to the Square order, marks it shipped, and sends the shipped email if Brevo is set up. Never buys twice for the same order. |
+| `GET /api/admin/label?order_id=` | **Password required.** The saved label (base64 GIF) for reprinting. |
+| `POST /api/admin/finish` | **Password required.** `{ order_id }`. Retries the Square update and email if they failed. |
 | `GET /api/health` | Shows which settings are present. Add `?square=1` to test the Square token, or `?ups=1` to test the UPS credentials. |
 
 Both paths also work without the `/api` prefix, for example on the workers.dev address.
@@ -68,6 +72,22 @@ Add these in Workers & Pages → ckoolsassii-worker → Settings → Variables a
 | `SHIP_FROM_STATE` | Text | 2-letter code, e.g. `CO` |
 | `SHIP_FROM_ZIP` | Text | |
 | `UPS_ENV` | Text | Optional. `test` uses UPS's testing system; it defaults to production. |
+
+## Shipping label page (ckoolsassii.biz/admin.html)
+
+Also add:
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | Secret | Password for the label page, at least 8 characters. Use a long, unique one. |
+| `SHIP_FROM_PHONE` | Text | 10-digit phone number. UPS requires it on labels. |
+| `BREVO_API_KEY` | Secret | Optional. Brevo API key for the "your order has shipped" email. |
+| `EMAIL_FROM` | Text | Optional. Sender address verified in Brevo, e.g. `orders@ckoolsassii.biz`. |
+| `EMAIL_FROM_NAME` | Text | Optional. Defaults to `cKool n saSSii`. |
+
+Your UPS app at developer.ups.com also needs the **Shipping** product, not just Rating.
+
+Labels are kept in the D1 `shipping_labels` table (see `migrations/0002_shipping_labels.sql`; the worker creates the table itself if needed). To cancel a label, void it in your UPS account within 90 days.
 
 Package weight is estimated from product names (`WEIGHT_RULES` in `src/shipping.ts`: hoodie 1.4 lb, sweatshirt 1.2, long sleeve 0.6, tee 0.45, cap 0.35, beanie 0.25, other 0.75, plus 0.3 lb packaging). Edit those numbers to match your real packed weights.
 
