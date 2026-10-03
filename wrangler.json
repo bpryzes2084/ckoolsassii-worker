@@ -12,5 +12,9 @@
 	],
 	"observability": {
 		"enabled": true
+	},
+	"keep_vars": true,
+	"vars": {
+		"SQUARE_ENV": "production"
 	}
 }
