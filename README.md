@@ -10,6 +10,7 @@ stock status.
 | --- | --- |
 | `GET /api/search?q=hoodie` | Products whose name, description, category or size matches every word in `q`. Handles plurals and common alternatives (tee / t-shirt, hat → caps and beanies, crewneck / sweatshirt). Empty `q` returns everything. |
 | `POST /api/shipping-rates` | Live UPS rates for the cart. Body: `{ "address": { "postal_code": "90001", "line1": "…", "city": "…", "state": "CA" }, "items": [{ "variation_id": "…", "qty": 2 }] }`. Returns `{ weight_lb, rates: [{ service, amount, business_days, … }] }`, cheapest first. |
+| `POST /api/create-checkout` | Creates a Square payment link. Body: `{ "items": [{ "variation_id": "…", "qty": 1 }], "shipping": { "service_code": "03", "postal_code": "90001" }, "return_url": "https://ckoolsassii.biz/" }`. Prices come from the Square catalog and the UPS charge is re-quoted on the server, so the browser can't change either. Returns `{ checkoutUrl, order_id, shipping }`. Square collects the shipping address and sends the buyer back to `return_url?order=complete`. Requires `SQUARE_LOCATION_ID`. |
 | `GET /api/health` | Shows which settings are present. Add `?square=1` to test the Square token, or `?ups=1` to test the UPS credentials. |
 
 Both paths also work without the `/api` prefix, for example on the workers.dev address.

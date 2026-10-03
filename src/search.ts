@@ -51,7 +51,7 @@ function apiBase(env: SquareEnv): string {
 		: "https://connect.squareup.com";
 }
 
-async function squareFetch(env: SquareEnv, path: string, init: RequestInit = {}): Promise<Json> {
+export async function squareFetch(env: SquareEnv, path: string, init: RequestInit = {}): Promise<Json> {
 	const res = await fetch(apiBase(env) + path, {
 		...init,
 		headers: {

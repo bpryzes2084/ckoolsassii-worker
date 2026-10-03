@@ -1,4 +1,5 @@
 import { checkSquare, itemNamesForVariations, searchCatalog, type SquareEnv } from "./search";
+import { CheckoutError, createCheckout, type CheckoutInput } from "./checkout";
 import { estimateWeightLb, getRates, getUpsToken, missingShipFrom, upsConfigured, type ShipTo, type UpsEnv } from "./shipping";
 
 interface AppEnv extends SquareEnv, UpsEnv {
@@ -87,6 +88,25 @@ export default {
 			} catch (err) {
 				console.error("shipping rates failed:", err);
 				return json({ error: "Couldn't get UPS rates for that address. Check the ZIP code and try again.", detail: (err as Error).message }, 502);
+			}
+		}
+
+		if (path === "/create-checkout" && request.method === "POST") {
+			if (!env.SQUARE_ACCESS_TOKEN || !upsConfigured(env)) {
+				return json({ error: "Checkout is not set up yet." }, 503);
+			}
+			let input: CheckoutInput;
+			try {
+				input = await request.json();
+			} catch {
+				return json({ error: "Send JSON: { items: [{ variation_id, qty }], shipping: { service_code, postal_code } }" }, 400);
+			}
+			try {
+				return json(await createCheckout(env, input));
+			} catch (err) {
+				if (err instanceof CheckoutError) return json({ error: err.message }, err.status);
+				console.error("checkout failed:", err);
+				return json({ error: "Checkout is unavailable right now. Please try again shortly.", detail: (err as Error).message }, 502);
 			}
 		}
 
