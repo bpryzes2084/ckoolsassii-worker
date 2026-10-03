@@ -15,6 +15,7 @@ stock status.
 | `POST /api/admin/label` | **Password required.** `{ order_id, service_code?, weight_lb? }`. Buys a UPS label, saves it, writes tracking to the Square order, marks it shipped, and sends the shipped email if Brevo is set up. Never buys twice for the same order. |
 | `GET /api/admin/label?order_id=` | **Password required.** The saved label (base64 GIF) for reprinting. |
 | `POST /api/admin/finish` | **Password required.** `{ order_id }`. Retries the Square update and email if they failed. |
+| `GET` / `PUT /api/admin/keywords` | **Password required.** The hidden search keyword list (`{ keywords: [{ term, matches: [colorway, …] }] }`). PUT replaces the whole list. Edited on admin.html. |
 | `GET /api/health` | Shows which settings are present. Add `?square=1` to test the Square token, or `?ups=1` to test the UPS credentials. |
 
 Both paths also work without the `/api` prefix, for example on the workers.dev address.

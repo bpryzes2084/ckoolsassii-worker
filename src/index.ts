@@ -1,4 +1,5 @@
 import { checkSquare, itemNamesForVariations, searchCatalog, type SquareEnv } from "./search";
+import { loadAliases, saveAliases } from "./aliases";
 import { AdminError, checkAdmin, createLabel, finishShipment, getLabel, listOrders, type AdminEnv } from "./admin";
 import { CheckoutError, createCheckout, type CheckoutInput } from "./checkout";
 import { estimateWeightLb, getRates, getUpsToken, missingShipFrom, upsConfigured, type ShipTo, type UpsEnv } from "./shipping";
@@ -9,7 +10,7 @@ interface AppEnv extends SquareEnv, UpsEnv, AdminEnv {
 
 const CORS_HEADERS: Record<string, string> = {
 	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+	"Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 	"Access-Control-Allow-Headers": "Content-Type, Authorization",
 	"Access-Control-Max-Age": "86400",
 };
@@ -101,7 +102,15 @@ export default {
 				if (path === "/admin/label" && request.method === "GET") {
 					return json(await getLabel(env, url.searchParams.get("order_id") || ""), 200, { "Cache-Control": "no-store" });
 				}
-				const input = request.method === "POST" ? ((await request.json().catch(() => ({}))) as Record<string, any>) : {};
+				const input = request.method === "POST" || request.method === "PUT" ? ((await request.json().catch(() => ({}))) as Record<string, any>) : {};
+				if (path === "/admin/keywords" && request.method === "GET") return json({ keywords: await loadAliases(env.DB) }, 200, { "Cache-Control": "no-store" });
+				if (path === "/admin/keywords" && request.method === "PUT") {
+					try {
+						return json({ keywords: await saveAliases(env.DB, input.keywords) });
+					} catch (err) {
+						return json({ error: (err as Error).message }, 400);
+					}
+				}
 				if (path === "/admin/label" && request.method === "POST") return json(await createLabel(env, input));
 				if (path === "/admin/finish" && request.method === "POST") return json(await finishShipment(env, String(input.order_id || "")));
 				return json({ error: "Not found" }, 404);
@@ -137,7 +146,7 @@ export default {
 			}
 			const q = (url.searchParams.get("q") || "").slice(0, 100);
 			try {
-				const result = await searchCatalog(env, q);
+				const result = await searchCatalog(env, q, await loadAliases(env.DB));
 				return json(result, 200, { "Cache-Control": "public, max-age=60" });
 			} catch (err) {
 				console.error("search failed:", err);

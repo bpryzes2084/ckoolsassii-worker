@@ -148,19 +148,65 @@ export function parseQuery(q: string): string[][] {
 		.map(variantsOf);
 }
 
-/** Score an item's text against the query. 0 = no match. Every query word must match. */
-export function scoreText(fields: { name: string; rest: string }, query: string[][]): number {
-	if (!query.length) return 1;
+export interface SearchAlias {
+	term: string; // what shoppers type, e.g. "tar heels"
+	matches: string[]; // colorway phrases it stands for, e.g. ["carolina blue"]; any one can match
+}
+
+export interface ParsedQuery {
+	words: string[][]; // ordinary words, each with its accepted forms
+	aliasGroups: string[][][]; // one entry per alias used: list of phrases, each a list of words
+}
+
+/** Splits the query into keyword-list terms (longest first) and ordinary words. */
+export function parseQueryWithAliases(q: string, aliases: SearchAlias[] = []): ParsedQuery {
+	let rest = ` ${normalize(q)} `;
+	const aliasGroups: string[][][] = [];
+	const sorted = aliases
+		.map((a) => ({ term: normalize(a.term), phrases: a.matches.map((m) => normalize(m).split(" ").filter(Boolean)).filter((p) => p.length) }))
+		.filter((a) => a.term && a.phrases.length)
+		.sort((a, b) => b.term.length - a.term.length);
+	for (const a of sorted) {
+		for (const termForm of new Set([a.term, ...forms(a.term)])) {
+			const needle = ` ${termForm} `;
+			if (rest.includes(needle)) {
+				rest = rest.replace(needle, " ");
+				aliasGroups.push(a.phrases);
+				break;
+			}
+		}
+	}
+	return { words: parseQuery(rest), aliasGroups };
+}
+
+function hasWord(words: string[], target: string): boolean {
+	const targets = forms(target);
+	return targets.some((f) => words.some((w) => w === f || w.startsWith(f)));
+}
+
+/** Score an item's text against the query. 0 = no match. Every query word and keyword-list term must match. */
+export function scoreText(
+	fields: { name: string; rest: string },
+	query: string[][] | ParsedQuery,
+): number {
+	const parsed: ParsedQuery = Array.isArray(query) ? { words: query, aliasGroups: [] } : query;
+	if (!parsed.words.length && !parsed.aliasGroups.length) return 1;
 	const name = normalize(fields.name);
 	const rest = normalize(fields.rest);
 	const nameWords = name.split(" ").flatMap(forms);
 	const restWords = rest.split(" ").flatMap(forms);
+	const allWords = nameWords.concat(restWords);
 	let score = 0;
-	for (const forms of query) {
+	for (const forms of parsed.words) {
 		const inName = forms.some((f) => nameWords.some((w) => w === f || w.startsWith(f)));
 		const inRest = forms.some((f) => restWords.some((w) => w === f || w.startsWith(f)));
 		if (inName) score += 3;
 		else if (inRest) score += 1;
+		else return 0;
+	}
+	for (const phrases of parsed.aliasGroups) {
+		if (phrases.some((p) => p.every((w) => hasWord(nameWords, w)))) score += 3;
+		else if (phrases.some((p) => p.every((w) => hasWord(allWords, w)))) score += 1;
 		else return 0;
 	}
 	return score;
@@ -222,9 +268,9 @@ function isTracked(variation: Json, locationId?: string): { tracked: boolean; ma
 	};
 }
 
-export async function searchCatalog(env: SquareEnv, q: string): Promise<Json> {
+export async function searchCatalog(env: SquareEnv, q: string, aliases: SearchAlias[] = []): Promise<Json> {
 	const catalog = await loadCatalog(env);
-	const query = parseQuery(q);
+	const query = parseQueryWithAliases(q, aliases);
 	const loc = env.SQUARE_LOCATION_ID || undefined;
 
 	const matches = catalog.items
