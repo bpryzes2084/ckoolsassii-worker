@@ -1,4 +1,4 @@
-import { searchCatalog, type SquareEnv } from "./search";
+import { checkSquare, searchCatalog, type SquareEnv } from "./search";
 
 interface AppEnv extends SquareEnv {
 	DB: D1Database;
@@ -27,7 +27,23 @@ export default {
 		if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
 
 		if (path === "/health") {
-			return json({ ok: true, square_configured: Boolean(env.SQUARE_ACCESS_TOKEN) });
+			const body: Record<string, unknown> = {
+				ok: true,
+				square_configured: Boolean(env.SQUARE_ACCESS_TOKEN),
+				square_env: (env.SQUARE_ENV || "production").toLowerCase(),
+			};
+			// /api/health?square=1 also tests the token against Square.
+			if (url.searchParams.has("square") && env.SQUARE_ACCESS_TOKEN) {
+				try {
+					const locations = await checkSquare(env);
+					body.square_ok = true;
+					body.locations = locations;
+				} catch (err) {
+					body.square_ok = false;
+					body.square_error = (err as Error).message;
+				}
+			}
+			return json(body);
 		}
 
 		if (path === "/search" && request.method === "GET") {
@@ -40,7 +56,8 @@ export default {
 				return json(result, 200, { "Cache-Control": "public, max-age=60" });
 			} catch (err) {
 				console.error("search failed:", err);
-				return json({ error: "Search is unavailable right now. Please try again shortly." }, 502);
+				// Square's reason (e.g. "401: This request could not be authorized") helps diagnose setup problems; it contains no secrets.
+				return json({ error: "Search is unavailable right now. Please try again shortly.", detail: (err as Error).message }, 502);
 			}
 		}
 

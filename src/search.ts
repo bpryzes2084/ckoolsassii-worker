@@ -94,6 +94,12 @@ async function loadCatalog(env: SquareEnv): Promise<CatalogCache> {
 	return cache;
 }
 
+/** Lists the account's locations; used by /api/health?square=1 to confirm the token works. */
+export async function checkSquare(env: SquareEnv): Promise<{ id: string; name: string; status: string }[]> {
+	const data = await squareFetch(env, "/v2/locations");
+	return (data.locations || []).map((l: Json) => ({ id: l.id, name: l.name, status: l.status }));
+}
+
 // ---- text matching (exported for testing) ----
 
 export function normalize(s: string): string {
