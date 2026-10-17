@@ -35,6 +35,9 @@ const ALSO_MATCHES: Record<string, string[]> = {
 	gorilla: ["rilla"],
 	rilla: ["gorilla"],
 	faith: ["believe"],
+	sport: ["athletic"],
+	varsity: ["athletic"],
+	athletics: ["athletic"],
 };
 
 // Built-in keyword: "be strong" finds every Be Strong style. Merged with the
