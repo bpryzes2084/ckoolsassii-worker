@@ -34,6 +34,7 @@ const ALSO_MATCHES: Record<string, string[]> = {
 	accessory: ["accessories", "bag", "tote", "keychain", "sticker"],
 	gorilla: ["rilla"],
 	rilla: ["gorilla"],
+	faith: ["believe"],
 };
 
 // Built-in keyword: "be strong" finds every Be Strong style. Merged with the
