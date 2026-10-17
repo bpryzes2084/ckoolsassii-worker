@@ -32,7 +32,15 @@ const ALSO_MATCHES: Record<string, string[]> = {
 	color: ["colour", "colorway"],
 	colour: ["color", "colorway"],
 	accessory: ["accessories", "bag", "tote", "keychain", "sticker"],
+	gorilla: ["rilla"],
+	rilla: ["gorilla"],
 };
+
+// Built-in keyword: "be strong" finds every Be Strong style. Merged with the
+// admin keyword list; an admin entry for the same term adds to it.
+const BUILT_IN_ALIASES: SearchAlias[] = [
+	{ term: "be strong", matches: ["be strong", "bear", "eagle", "gorilla", "rilla", "lion", "wolf"] },
+];
 
 type Json = Record<string, any>;
 
@@ -179,9 +187,14 @@ export function parseQueryWithAliases(q: string, aliases: SearchAlias[] = []): P
 	return { words: parseQuery(rest), aliasGroups };
 }
 
+/** Exact word match; longer words (5+ letters) may also match the start of a word, so "anch" stays out but "anchors" finds "anchor". */
+function wordMatches(word: string, typed: string): boolean {
+	return word === typed || (typed.length >= 5 && word.startsWith(typed));
+}
+
 function hasWord(words: string[], target: string): boolean {
 	const targets = forms(target);
-	return targets.some((f) => words.some((w) => w === f || w.startsWith(f)));
+	return targets.some((f) => words.some((w) => wordMatches(w, f)));
 }
 
 /** Score an item's text against the query. 0 = no match. Every query word and keyword-list term must match. */
@@ -198,8 +211,8 @@ export function scoreText(
 	const allWords = nameWords.concat(restWords);
 	let score = 0;
 	for (const forms of parsed.words) {
-		const inName = forms.some((f) => nameWords.some((w) => w === f || w.startsWith(f)));
-		const inRest = forms.some((f) => restWords.some((w) => w === f || w.startsWith(f)));
+		const inName = forms.some((f) => nameWords.some((w) => wordMatches(w, f)));
+		const inRest = forms.some((f) => restWords.some((w) => wordMatches(w, f)));
 		if (inName) score += 3;
 		else if (inRest) score += 1;
 		else return 0;
@@ -270,7 +283,7 @@ function isTracked(variation: Json, locationId?: string): { tracked: boolean; ma
 
 export async function searchCatalog(env: SquareEnv, q: string, aliases: SearchAlias[] = []): Promise<Json> {
 	const catalog = await loadCatalog(env);
-	const query = parseQueryWithAliases(q, aliases);
+	const query = parseQueryWithAliases(q, [...BUILT_IN_ALIASES, ...aliases]);
 	const loc = env.SQUARE_LOCATION_ID || undefined;
 
 	const matches = catalog.items
